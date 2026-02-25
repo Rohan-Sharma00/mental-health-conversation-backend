@@ -8,9 +8,11 @@ const {
  getState,
  getQuestion,
  getHistory,
- goBack
+ goBack,
+ getAllQuestions
 } = require("../controllers/flowController");
 
+router.get("/questions", getAllQuestions);
 
 router.post("/start-module", startModule);
 

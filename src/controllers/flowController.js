@@ -1,6 +1,8 @@
 const State = require("../models/State");
 const Question = require("../models/Question");
 const mongoose = require("mongoose");
+const History = require("../models/History");
+
 
 
 exports.getAllQuestions = async (req, res) => {
@@ -161,11 +163,73 @@ exports.getQuestion = async (req, res) => {
 
 };
 
+exports.addQuestion = async (req, res) => {
+
+  try {
+
+    const questionData = req.body;
+
+    const question = new Question(questionData);
+
+    const savedQuestion = await question.save();
+
+    res.status(201).json({
+      message: "Question added",
+      data: savedQuestion
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      message: "Something went wrong"
+    });
+
+  }
+
+};
+
 exports.getHistory = async (req, res) => {
 
  console.log("getHistory working");
 
- res.send("getHistory working");
+ try {
+
+    const userId = req.params.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        message: "Invalid userId"
+      });
+    }
+
+    const history = await History.find({
+      userId: new mongoose.Types.ObjectId(userId)
+    });
+
+    if (history.length === 0) {
+      return res.json({
+        message: "No history found",
+        data: []
+      });
+    }
+
+    res.json({
+      message: "History found",
+      data: history
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      message: "Something went wrong"
+    });
+
+  }
+
 
 };
 
@@ -175,7 +239,112 @@ exports.answerQuestion = async (req, res) => {
 
  console.log("answerQuestion working");
 
- res.send("answerQuestion working");
+  try {
+
+    const { userId, selectedOption } = req.body;
+
+    if (!userId || !selectedOption) {
+      return res.status(400).json({
+        message: "userId and selectedOption required"
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        message: "Invalid userId"
+      });
+    }
+
+    // Get state
+    const state = await State.findOne({
+      userId: new mongoose.Types.ObjectId(userId)
+    });
+
+    if (!state) {
+      return res.status(404).json({
+        message: "State not found"
+      });
+    }
+
+    // Get current question
+    const question = await Question.findById(state.currentQuestionId);
+
+    if (!question) {
+      return res.status(404).json({
+        message: "Question not found"
+      });
+    }
+
+    // Find selected option
+    const option = question.options.find(
+      op => op.text === selectedOption
+    );
+
+    if (!option) {
+      return res.status(400).json({
+        message: "Invalid option"
+      });
+    }
+
+    // Save history
+    const history = new History({
+      userId: userId,
+      moduleId: question.moduleId,
+      questionId: question._id,
+      selectedOption: selectedOption
+    });
+
+    await history.save();
+
+    let nextQuestion;
+
+    // Switch module
+    if (option.nextModuleId) {
+
+      nextQuestion = await Question.findOne({
+        moduleId: option.nextModuleId
+      });
+
+      state.currentModuleId = option.nextModuleId;
+
+    }
+    else {
+
+      // Move inside module
+      nextQuestion = await Question.findOne({
+        moduleId: question.moduleId,
+        _id: { $ne: question._id }
+      });
+
+    }
+
+    if (!nextQuestion) {
+      return res.json({
+        message: "Flow ended"
+      });
+    }
+
+    // Update state
+    state.previousQuestionId = question._id;
+    state.currentQuestionId = nextQuestion._id;
+
+    await state.save();
+
+    res.json({
+      message: "Next question",
+      question: nextQuestion
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      message: "Something went wrong"
+    });
+
+  }
+
 
 };
 
@@ -183,7 +352,52 @@ exports.answerQuestion = async (req, res) => {
 exports.goBack = async (req, res) => {
 
  console.log("goBack working");
+ try {
 
- res.send("goBack working");
+    const { userId } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        message: "Invalid userId"
+      });
+    }
+
+    const state = await State.findOne({
+      userId: new mongoose.Types.ObjectId(userId)
+    });
+
+    if (!state) {
+      return res.status(404).json({
+        message: "State not found"
+      });
+    }
+
+    if (!state.previousQuestionId) {
+      return res.status(400).json({
+        message: "No previous question"
+      });
+    }
+
+    state.currentQuestionId = state.previousQuestionId;
+    state.previousQuestionId = null;
+
+    await state.save();
+
+    const question = await Question.findById(state.currentQuestionId);
+
+    res.json({
+      message: "Moved back",
+      question: question
+    });
+
+  } catch (error) {
+
+    console.log(error);
+
+    res.status(500).json({
+      message: "Something went wrong"
+    });
+
+  }
 
 };

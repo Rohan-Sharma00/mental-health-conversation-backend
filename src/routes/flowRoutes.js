@@ -9,8 +9,11 @@ const {
  getQuestion,
  getHistory,
  goBack,
- getAllQuestions
+ getAllQuestions,
+ addQuestion
 } = require("../controllers/flowController");
+
+router.post("/questions", addQuestion);
 
 router.get("/questions", getAllQuestions);
 
